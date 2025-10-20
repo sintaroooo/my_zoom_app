@@ -1,146 +1,573 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Step 1: 1-to-1 Video Chat</title>
+    <title>My Zoom Clone</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; }
-        video { 
-            width: 48%; 
-            max-width: 500px;
-            border: 2px solid #333; 
-            background: #f0f0f0;
+        /* --- 1. 基本レイアウト --- */
+        body { 
+            font-family: sans-serif; 
+            margin: 0; 
+            background: #202124; /* Zoom風の暗い背景 */
+            color: white;
+            display: flex;
+            flex-direction: column;
+            height: 100vh; /* 画面全体の高さ */
+            overflow: hidden; /* はみ出し防止 */
+        }
+        
+        /* --- 2. ビデオコンテナ全体 --- */
+        #videoGridContainer {
+            flex-grow: 1; /* 空きスペースをすべて埋める */
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; 
+        }
+
+        /* --- 3. メインビデオエリア --- */
+        #mainVideoContainer {
+            flex-grow: 1; /* 可能な限り大きく */
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+        }
+        #mainVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: contain; /* アスペクト比を保って内側に収める */
+        }
+
+        /* --- 4. サムネイルエリア --- */
+        #thumbnailVideosContainer {
+            height: 150px; /* サムネイルバーの高さ固定 */
+            background: #2c2c2e;
+            display: flex;
+            overflow-x: auto; /* 横スクロール可能に */
+            overflow-y: hidden;
+            padding: 5px;
+            border-top: 1px solid #444;
+        }
+        .thumbnail-video-item {
+            width: 200px; /* サムネイルの幅固定 */
+            height: 100%;
+            margin: 0 5px;
+            border: 2px solid #555;
+            border-radius: 5px;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            background: #000;
+            flex-shrink: 0; /* 縮まないようにする */
+        }
+        .thumbnail-video-item video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* アスペクト比を保って全体を覆う */
+        }
+        .thumbnail-video-item:hover, .thumbnail-video-item.active {
+            border-color: #007bff; /* アクティブなボーダー色 */
+        }
+
+        /* --- 5. 名前タグ (メインとサムネイル共通) --- */
+        .video-name-tag {
+            position: absolute;
+            bottom: 5px;
+            left: 5px;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+
+        /* --- 6. コントロールバー --- */
+        #controls {
+            background: #2c2c2e;
+            padding: 10px;
+            text-align: center;
+            border-top: 1px solid #444;
+            flex-shrink: 0; /* 高さを固定 */
+        }
+        button { 
+            padding: 8px 12px; 
+            font-size: 14px; 
+            cursor: pointer; 
+            border: none; 
+            border-radius: 5px;
+            background-color: #007bff;
+            color: white;
+            margin: 0 5px;
+        }
+        button.off { background-color: #dc3545; }
+        button.sharing { background-color: #28a745; }
+
+        /* --- 7. チャット --- */
+        #chatContainer {
+            width: 300px; /* チャット欄の幅固定 */
+            display: flex;
+            flex-direction: column;
+            background: #2c2c2e;
+            border-left: 1px solid #444;
+            flex-shrink: 0;
+            /* デフォルトは非表示。JSで切り替える (今回は簡略化のため常時表示) */
+        }
+        #chatMessages {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 10px;
+            background: #202124;
+        }
+        #chatMessages p {
+            margin: 0 0 5px 0;
+            font-size: 14px;
+        }
+        #chatMessages p span {
+            font-weight: bold;
+            color: #00aaff; /* 名前を少し目立たせる */
+        }
+        #chatInputContainer { display: flex; border-top: 1px solid #444; }
+        #chatInput {
+            flex-grow: 1;
+            padding: 8px;
+            border: none;
+            background: #333;
+            color: white;
+        }
+        #sendChatButton {
+            width: 60px;
+            background-color: #28a745;
             margin: 5px;
+        }
+
+        /* --- 8. 全体構成の調整 (チャットを右側に) --- */
+        #mainContent {
+            display: flex;
+            flex-grow: 1;
+            overflow: hidden;
         }
     </style>
 </head>
 <body>
-    <h1>WebRTC 1-to-1 Demo</h1>
-    <div>
-        <h2>My Video</h2>
-        <video id="localVideo" autoplay muted playsinline></video>
-    </div>
-    <div>
-        <h2>Remote Video</h2>
-        <video id="remoteVideo" autoplay playsinline></video>
+
+    <div id="mainContent">
+        
+        <div id="videoGridContainer">
+            <div id="mainVideoContainer">
+                <video id="mainVideo" autoplay playsinline muted></video> <div class="video-name-tag" id="mainVideoNameTag"></div>
+            </div>
+            
+            <div id="thumbnailVideosContainer">
+                </div>
+        </div>
+
+        <div id="chatContainer">
+            <h2 style="text-align: center; margin: 10px 0;">Chat</h2>
+            <div id="chatMessages">
+                </div>
+            <div id="chatInputContainer">
+                <input type="text" id="chatInput" placeholder="メッセージを入力...">
+                <button id="sendChatButton">送信</button>
+            </div>
+        </div>
+
     </div>
 
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <div id="controls">
+        <button id="toggleMuteButton">マイクをミュート</button>
+        <button id="toggleCameraButton">カメラをオフ</button>
+        <button id="toggleScreenShareButton">画面を共有</button>
+    </div>
     
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script>
+        // --- 0. グローバル変数定義 ---
         const socket = io.connect(window.location.origin);
-        const localVideo = document.getElementById('localVideo');
-        const remoteVideo = document.getElementById('remoteVideo');
+        
+        const mainVideo = document.getElementById('mainVideo');
+        const mainVideoNameTag = document.getElementById('mainVideoNameTag');
+        const thumbnailVideosContainer = document.getElementById('thumbnailVideosContainer');
 
-        let peerConnection;
         let localStream;
+        let myUsername;
+        let peerConnections = {}; // { 'remote_sid': RTCPeerConnection }
+        let userNames = {};       // { 'sid': 'username' }
+        let videoStreams = {};    // { 'sid': MediaStream } (自分のも 'local' で保存)
 
-        // STUNサーバーの設定（Googleのパブリックサーバー）
-        // これにより、NAT越え（ルーター越え）が可能になります
-        const iceConfig = {
-            'iceServers': [
-                {'urls': 'stun:stun.l.google.com:19302'}
-            ]
-        };
+        const iceConfig = { 'iceServers': [{'urls': 'stun:stun.l.google.com:19302'}] };
 
-        // --- 1. メディア（カメラ・マイク）の取得 ---
+        // --- 1. 初期化 & メディア取得 ---
+        myUsername = prompt("あなたの名前を入力してください:", "MyName") || "Anonymous";
+        userNames['local'] = myUsername; // 自分の名前を保存
+
         navigator.mediaDevices.getUserMedia({ video: true, audio: true })
             .then(stream => {
-                localVideo.srcObject = stream;
                 localStream = stream;
+                videoStreams['local'] = stream; // 自分のストリームを保存
+
+                // 1a. メインビデオに自分をセット
+                setMainVideo('local');
                 
-                // メディアが取得できたら、サーバーに 'join' を送信
-                console.log('Joining room...');
-                socket.emit('join', {});
+                // 1b. サムネイルに自分を追加
+                createThumbnailVideo('local', stream, myUsername);
+
+                // 1c. サーバーに 'join' を送信
+                console.log('Joining room with username:', myUsername);
+                socket.emit('join', { 'username': myUsername });
             })
-            .catch(error => {
-                console.error('Error accessing media devices.', error);
+            .catch(error => console.error('Error accessing media devices.', error));
+
+        // --- 2. メインビデオ切り替え関数 ---
+        function setMainVideo(sid) {
+            const stream = videoStreams[sid];
+            const name = userNames[sid];
+
+            if (stream && mainVideo.srcObject !== stream) {
+                mainVideo.srcObject = stream;
+                mainVideoNameTag.innerText = name;
+                
+                // メインのミュート状態は、自分('local')の時だけ有効にする
+                mainVideo.muted = (sid === 'local');
+            }
+
+            // サムネイルのアクティブ表示を切り替え
+            document.querySelectorAll('.thumbnail-video-item').forEach(thumb => {
+                thumb.classList.remove('active');
             });
+            const activeThumb = document.getElementById(`thumb-${sid}`);
+            if (activeThumb) {
+                activeThumb.classList.add('active');
+            }
+        }
+        
+        // --- 3. サムネイルビデオ要素の作成関数 ---
+        function createThumbnailVideo(sid, stream, name) {
+            
+            // すでにサムネイルが存在しないかチェック
+            if (document.getElementById(`thumb-${sid}`)) {
+                console.warn(`Thumbnail for ${sid} already exists. Skipping.`);
+                return; // ★ 処理を中断
+            }
+            // サムネイルコンテナ（div）
+            const thumbDiv = document.createElement('div');
+            thumbDiv.id = `thumb-${sid}`;
+            thumbDiv.className = 'thumbnail-video-item';
+            
+            // ビデオ要素
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            video.autoplay = true;
+            video.playsinline = true;
+            video.muted = (sid === 'local'); // 自分だけミュート
 
-        // --- 2. PeerConnectionの初期化 (共通) ---
-        function createPeerConnection() {
-            peerConnection = new RTCPeerConnection(iceConfig);
+            // 名前タグ
+            const nameTag = document.createElement('div');
+            nameTag.className = 'video-name-tag';
+            nameTag.innerText = name;
 
-            // (A) ICE候補が見つかったら、シグナリングサーバー経由で相手に送る
-            peerConnection.onicecandidate = event => {
+            // クリックしたらメインビデオに設定
+            thumbDiv.onclick = () => {
+                setMainVideo(sid);
+            };
+
+            thumbDiv.appendChild(video);
+            thumbDiv.appendChild(nameTag);
+            thumbnailVideosContainer.appendChild(thumbDiv);
+
+            // サムネイルが追加されたら、メインのアクティブ表示を更新
+            if (mainVideo.srcObject && mainVideo.srcObject === stream) {
+                thumbDiv.classList.add('active');
+            }
+        }
+        
+        // --- 4. PeerConnectionの初期化 (汎用関数) ---
+        // (内容はステップ2とほぼ同じ。ontrackだけ変更)
+        function createPeerConnection(remoteSid, remoteUsername) {
+            console.log(`Creating PeerConnection for ${remoteUsername} (${remoteSid})`);
+            
+            if (peerConnections[remoteSid]) {
+                peerConnections[remoteSid].close();
+            }
+
+            const pc = new RTCPeerConnection(iceConfig);
+            
+            pc.onicecandidate = event => {
                 if (event.candidate) {
-                    console.log('Sending ICE candidate');
-                    socket.emit('candidate', { 'candidate': event.candidate });
+                    socket.emit('candidate', { 
+                        'candidate': event.candidate,
+                        'target_sid': remoteSid
+                    });
                 }
             };
 
-            // (B) 相手の映像ストリームが届いたら、<video>タグに設定
-            peerConnection.ontrack = event => {
-                console.log('Received remote track');
-                remoteVideo.srcObject = event.streams[0];
+            // ★変更点: 相手の映像ストリームが届いたら、サムネイルを作成
+            pc.ontrack = event => {
+                console.log(`Received remote track from ${remoteUsername}`);
+                const remoteStream = event.streams[0];
+                
+                // すでにこのsidのサムネイルが作られていないか、再度チェック
+                if (document.getElementById(`thumb-${remoteSid}`)) {
+                    console.log(`ontrack fired, but thumbnail for ${remoteSid} already exists.`);
+                    // (ストリームが更新された場合に対応するなら、ここで video.srcObject を
+                    //  更新するが、今回は重複防止が目的なので return する)
+                    
+                    // ストリーム情報だけは最新にしておく
+                    videoStreams[remoteSid] = remoteStream; 
+                    return; 
+                }
+
+                // リモートの情報を保存
+                videoStreams[remoteSid] = remoteStream;
+                userNames[remoteSid] = remoteUsername;
+                
+                // サムネイルを作成
+                createThumbnailVideo(remoteSid, remoteStream, remoteUsername);
             };
 
-            // (C) 自分のローカルストリームをPeerConnectionに追加（相手に送るため）
             localStream.getTracks().forEach(track => {
-                peerConnection.addTrack(track, localStream);
+                pc.addTrack(track, localStream);
             });
+
+            peerConnections[remoteSid] = pc;
+            return pc;
         }
 
-        // --- 3. シグナリング処理 (SocketIOイベントハンドラ) ---
+        // --- 5. シグナリング処理 (SocketIOイベントハンドラ) ---
 
-        // (ケース1: 自分が1人目) 2人目 ('user_joined') が来たら、オファーを作成
+        // (新規参加時) サーバーから「今いる人リスト」を受け取る
+        socket.on('current_users', (data) => {
+            console.log('Received current users:', data.users);
+            data.users.forEach(user => {
+                const remoteSid = user.sid;
+                const remoteUsername = user.username;
+                
+                // 情報を保存
+                userNames[remoteSid] = remoteUsername;
+                
+                // この人専用のP2P接続を作成
+                const pc = createPeerConnection(remoteSid, remoteUsername);
+                
+                // オファーを作成して送る
+                pc.createOffer()
+                    .then(offer => pc.setLocalDescription(offer))
+                    .then(() => {
+                        socket.emit('offer', { 
+                            'sdp': pc.localDescription,
+                            'target_sid': remoteSid
+                        });
+                    })
+                    .catch(e => console.error(`Error creating offer for ${remoteUsername}:`, e));
+            });
+        });
+
+        // (既存参加時) 新しいユーザー ('user_joined') が来たら...
+        // ★注意: このロジックは 'current_users' を受け取った側(新規)がオファーを
+        //   送る設計にしたため、'user_joined' を受け取った側(既存)はオファーを待つ。
         socket.on('user_joined', (data) => {
-            console.log('Another user joined:', data.sid);
-            console.log('Creating offer...');
-            
-            createPeerConnection();
-            
-            peerConnection.createOffer()
-                .then(offer => peerConnection.setLocalDescription(offer))
-                .then(() => {
-                    // オファーをシグナリングサーバー経由で相手に送る
-                    socket.emit('offer', { 'sdp': peerConnection.localDescription });
-                })
-                .catch(e => console.error('Error creating offer:', e));
+            const remoteSid = data.sid;
+            const remoteUsername = data.username;
+            console.log(`User ${remoteUsername} joined.`);
+            // 情報を保存 (PeerConnectionはoffer受信時に作成される)
+            userNames[remoteSid] = remoteUsername;
         });
 
-        // (ケース2: 自分が2人目) 1人目からオファー ('offer') を受け取る
+        // (既存参加時) 新規ユーザーからオファー ('offer') を受け取る
         socket.on('offer', (data) => {
-            if (peerConnection) {
-                // 既に接続処理中なら何もしない（3人目以降の対策）
-                // ステップ1では単純化のため無視
-                return;
-            }
-            console.log('Received offer');
+            const remoteSid = data.from_sid;
+            const remoteUsername = userNames[remoteSid] || 'Unknown'; // 保存した名前を取得
+            console.log(`Received offer from ${remoteUsername}`);
             
-            createPeerConnection();
+            const pc = createPeerConnection(remoteSid, remoteUsername);
 
-            peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp))
-                .then(() => peerConnection.createAnswer())
-                .then(answer => peerConnection.setLocalDescription(answer))
+            pc.setRemoteDescription(new RTCSessionDescription(data.sdp))
+                .then(() => pc.createAnswer())
+                .then(answer => pc.setLocalDescription(answer))
                 .then(() => {
-                    // アンサーをシグナリングサーバー経由で相手に送る
-                    socket.emit('answer', { 'sdp': peerConnection.localDescription });
+                    socket.emit('answer', { 
+                        'sdp': pc.localDescription,
+                        'target_sid': remoteSid
+                    });
                 })
-                .catch(e => console.error('Error creating answer:', e));
+                .catch(e => console.error(`Error creating answer for ${remoteUsername}:`, e));
         });
 
-        // (ケース1: 自分が1人目) アンサー ('answer') を受け取る
+        // (新規参加時) アンサー ('answer') を受け取る
         socket.on('answer', (data) => {
-            console.log('Received answer');
-            peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp))
-                .catch(e => console.error('Error setting remote description:', e));
+            const remoteSid = data.from_sid;
+            const remoteUsername = userNames[remoteSid] || 'Unknown';
+            console.log(`Received answer from ${remoteUsername}`);
+            
+            const pc = peerConnections[remoteSid];
+            if (pc) {
+                pc.setRemoteDescription(new RTCSessionDescription(data.sdp))
+                    .catch(e => console.error('Error setting remote description:', e));
+            }
         });
 
-        // (ケース1 & 2) ICE候補 ('candidate') を受け取る
+        // (共通) ICE候補 ('candidate') を受け取る
         socket.on('candidate', (data) => {
-            console.log('Received ICE candidate');
-            peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate))
-                .catch(e => console.error('Error adding ICE candidate:', e));
+            const remoteSid = data.from_sid;
+            const pc = peerConnections[remoteSid];
+            if (pc) {
+                pc.addIceCandidate(new RTCIceCandidate(data.candidate))
+                    .catch(e => console.error('Error adding ICE candidate:', e));
+            }
         });
         
-        // (おまけ) 相手が切断したら映像をクリア
+        // (クリーンアップ) 誰かが切断
         socket.on('user_left', (data) => {
-            console.log('User left:', data.sid);
-            remoteVideo.srcObject = null;
-            if (peerConnection) {
-                peerConnection.close();
-                peerConnection = null;
+            const remoteSid = data.sid;
+            const remoteUsername = userNames[remoteSid] || 'Unknown';
+            console.log(`User ${remoteUsername} left.`);
+
+            // P2P接続を閉じる
+            if (peerConnections[remoteSid]) {
+                peerConnections[remoteSid].close();
+                delete peerConnections[remoteSid];
             }
+            
+            // 保存情報を削除
+            delete userNames[remoteSid];
+            delete videoStreams[remoteSid];
+
+            // サムネイルを削除
+            const videoElement = document.getElementById(`thumb-${remoteSid}`);
+            if (videoElement) {
+                thumbnailVideosContainer.removeChild(videoElement);
+            }
+
+            // もし退出した人がメインビデオに映っていたら、自分をメインに戻す
+            if (mainVideoNameTag.innerText === remoteUsername) {
+                setMainVideo('local');
+            }
+        });
+        
+        
+        // --- 6. コントロール機能 (ミュート・カメラオフ) ---
+        // (内容は変更なし)
+        const toggleMuteButton = document.getElementById('toggleMuteButton');
+        const toggleCameraButton = document.getElementById('toggleCameraButton');
+        let isMuted = false;
+        let isCameraOff = false;
+        
+        toggleMuteButton.addEventListener('click', () => {
+            isMuted = !isMuted;
+            if (localStream) { localStream.getAudioTracks()[0].enabled = !isMuted; }
+            toggleMuteButton.innerText = isMuted ? 'マイクをオン' : 'マイクをミュート';
+            toggleMuteButton.classList.toggle('off', isMuted);
+        });
+        toggleCameraButton.addEventListener('click', () => {
+            isCameraOff = !isCameraOff;
+            if (localStream) { localStream.getVideoTracks()[0].enabled = !isCameraOff; }
+            toggleCameraButton.innerText = isCameraOff ? 'カメラをオン' : 'カメラをオフ';
+            toggleCameraButton.classList.toggle('off', isCameraOff);
+        });
+
+
+        // --- 7. 画面共有機能 ---
+        // (内容は変更なし)
+        const toggleScreenShareButton = document.getElementById('toggleScreenShareButton');
+        let isScreenSharing = false;
+        let screenStream = null;
+        let localVideoTrack = null; // .then() の中で初期化する
+
+        // getUserMedia の .then() の最後でトラックを保存
+        // (上のコードの getUserMedia.then() 内に localVideoTrack = localStream.getVideoTracks()[0]; を追加するのが望ましい)
+
+        toggleScreenShareButton.addEventListener('click', () => {
+            if (isScreenSharing) stopScreenShare(); else startScreenShare();
+        });
+
+        function startScreenShare() {
+            navigator.mediaDevices.getDisplayMedia({ video: true })
+                .then(stream => {
+                    screenStream = stream;
+                    const screenTrack = screenStream.getVideoTracks()[0];
+                    replaceTrackInAllPeers(screenTrack);
+
+                    // 画面共有中はメインもサムネイルも画面共有映像にする
+                    videoStreams['local_screen'] = screenStream; // 画面ストリームを一時保存
+                    userNames['local_screen'] = `${myUsername} (画面)`;
+                    createThumbnailVideo('local_screen', screenStream, userNames['local_screen']);
+                    setMainVideo('local_screen'); // メインも画面共有に
+
+                    screenTrack.onended = () => stopScreenShare();
+                    isScreenSharing = true;
+                    toggleScreenShareButton.innerText = '画面共有を停止';
+                    toggleScreenShareButton.classList.add('sharing');
+                }).catch(err => console.error('Error starting screen share:', err));
+        }
+
+        function stopScreenShare() {
+            if (screenStream) {
+                screenStream.getTracks().forEach(track => track.stop());
+                screenStream = null;
+            }
+            if (localVideoTrack) {
+                replaceTrackInAllPeers(localVideoTrack);
+            }
+            
+            // 画面共有用のサムネイルを削除
+            const screenThumb = document.getElementById('thumb-local_screen');
+            if (screenThumb) thumbnailVideosContainer.removeChild(screenThumb);
+            delete videoStreams['local_screen'];
+            delete userNames['local_screen'];
+            
+            // メインとサムネイルを自分のカメラに戻す
+            setMainVideo('local');
+
+            isScreenSharing = false;
+            toggleScreenShareButton.innerText = '画面を共有';
+            toggleScreenShareButton.classList.remove('sharing');
+        }
+
+        function replaceTrackInAllPeers(newTrack) {
+            if (!localVideoTrack && localStream) {
+                localVideoTrack = localStream.getVideoTracks()[0];
+            }
+            for (const sid in peerConnections) {
+                const pc = peerConnections[sid];
+                const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+                if (sender) {
+                    sender.replaceTrack(newTrack).catch(err => console.error('Failed to replace track:', err));
+                }
+            }
+        }
+        
+        // --- 8. チャット機能 ---
+        // (★サーバーから 'username' を受け取るように変更)
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+        const sendChatButton = document.getElementById('sendChatButton');
+
+        sendChatButton.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+
+        function sendMessage() {
+            const message = chatInput.value;
+            if (message.trim() !== '') {
+                socket.emit('send_message', { 'message': message });
+                chatInput.value = '';
+            }
+        }
+
+        socket.on('receive_message', (data) => {
+            const message = data.message;
+            const fromSid = data.from_sid;
+            const username = data.username; // ★サーバーから名前を受け取る
+
+            const p = document.createElement('p');
+            
+            if (fromSid === socket.id) {
+                p.innerHTML = `<span>You:</span> ${message}`;
+                p.style.color = '#00bbff'; // 自分のメッセージ
+            } else {
+                p.innerHTML = `<span>${username}:</span> ${message}`;
+            }
+
+            chatMessages.appendChild(p);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
         });
 
     </script>
