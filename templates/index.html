@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Step 1: 1-to-1 Video Chat</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        video { 
+            width: 48%; 
+            max-width: 500px;
+            border: 2px solid #333; 
+            background: #f0f0f0;
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>WebRTC 1-to-1 Demo</h1>
+    <div>
+        <h2>My Video</h2>
+        <video id="localVideo" autoplay muted playsinline></video>
+    </div>
+    <div>
+        <h2>Remote Video</h2>
+        <video id="remoteVideo" autoplay playsinline></video>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    
+    <script>
+        const socket = io.connect(window.location.origin);
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+
+        let peerConnection;
+        let localStream;
+
+        // STUNサーバーの設定（Googleのパブリックサーバー）
+        // これにより、NAT越え（ルーター越え）が可能になります
+        const iceConfig = {
+            'iceServers': [
+                {'urls': 'stun:stun.l.google.com:19302'}
+            ]
+        };
+
+        // --- 1. メディア（カメラ・マイク）の取得 ---
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+            .then(stream => {
+                localVideo.srcObject = stream;
+                localStream = stream;
+                
+                // メディアが取得できたら、サーバーに 'join' を送信
+                console.log('Joining room...');
+                socket.emit('join', {});
+            })
+            .catch(error => {
+                console.error('Error accessing media devices.', error);
+            });
+
+        // --- 2. PeerConnectionの初期化 (共通) ---
+        function createPeerConnection() {
+            peerConnection = new RTCPeerConnection(iceConfig);
+
+            // (A) ICE候補が見つかったら、シグナリングサーバー経由で相手に送る
+            peerConnection.onicecandidate = event => {
+                if (event.candidate) {
+                    console.log('Sending ICE candidate');
+                    socket.emit('candidate', { 'candidate': event.candidate });
+                }
+            };
+
+            // (B) 相手の映像ストリームが届いたら、<video>タグに設定
+            peerConnection.ontrack = event => {
+                console.log('Received remote track');
+                remoteVideo.srcObject = event.streams[0];
+            };
+
+            // (C) 自分のローカルストリームをPeerConnectionに追加（相手に送るため）
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
+        }
+
+        // --- 3. シグナリング処理 (SocketIOイベントハンドラ) ---
+
+        // (ケース1: 自分が1人目) 2人目 ('user_joined') が来たら、オファーを作成
+        socket.on('user_joined', (data) => {
+            console.log('Another user joined:', data.sid);
+            console.log('Creating offer...');
+            
+            createPeerConnection();
+            
+            peerConnection.createOffer()
+                .then(offer => peerConnection.setLocalDescription(offer))
+                .then(() => {
+                    // オファーをシグナリングサーバー経由で相手に送る
+                    socket.emit('offer', { 'sdp': peerConnection.localDescription });
+                })
+                .catch(e => console.error('Error creating offer:', e));
+        });
+
+        // (ケース2: 自分が2人目) 1人目からオファー ('offer') を受け取る
+        socket.on('offer', (data) => {
+            if (peerConnection) {
+                // 既に接続処理中なら何もしない（3人目以降の対策）
+                // ステップ1では単純化のため無視
+                return;
+            }
+            console.log('Received offer');
+            
+            createPeerConnection();
+
+            peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp))
+                .then(() => peerConnection.createAnswer())
+                .then(answer => peerConnection.setLocalDescription(answer))
+                .then(() => {
+                    // アンサーをシグナリングサーバー経由で相手に送る
+                    socket.emit('answer', { 'sdp': peerConnection.localDescription });
+                })
+                .catch(e => console.error('Error creating answer:', e));
+        });
+
+        // (ケース1: 自分が1人目) アンサー ('answer') を受け取る
+        socket.on('answer', (data) => {
+            console.log('Received answer');
+            peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp))
+                .catch(e => console.error('Error setting remote description:', e));
+        });
+
+        // (ケース1 & 2) ICE候補 ('candidate') を受け取る
+        socket.on('candidate', (data) => {
+            console.log('Received ICE candidate');
+            peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate))
+                .catch(e => console.error('Error adding ICE candidate:', e));
+        });
+        
+        // (おまけ) 相手が切断したら映像をクリア
+        socket.on('user_left', (data) => {
+            console.log('User left:', data.sid);
+            remoteVideo.srcObject = null;
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+        });
+
+    </script>
+</body>
+</html>
